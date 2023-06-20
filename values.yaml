@@ -1,0 +1,57 @@
+# Contains values that affect multiple components of the chart.
+global:
+
+  # The main enabled/disabled setting.
+  # If true, servers, clients, Consul DNS and the Consul UI will be enabled.
+  enabled: true
+  
+  # The prefix used for all resources created in the Helm chart.
+  name: consul
+  
+  # The name of the datacenter that the agents should register as.
+  datacenter: dc1
+
+  enableConsulNamespaces: true
+
+  gossipEncryption:
+    secretName: consul
+    secretKey: gossip-key
+  
+  # Enables TLS across the cluster to verify authenticity of the Consul servers and clients.
+  tls:
+    enabled: true
+    enableAutoEncrypt: true
+    caCert:
+      secretName: consul
+      secretKey: ca-cert
+    caKey:
+      secretName: consul
+      secretKey: ca-key
+  
+  # Enables ACLs across the cluster to secure access to data and APIs.
+  acls:
+    # If true, automatically manage ACL tokens and policies for all Consul components.
+    manageSystemACLs: true
+
+    bootstrapToken:
+      secretName: consul
+      secretKey: root-token
+    
+
+  image: 'hashicorp/consul-enterprise:1.16.0-rc1-ent'
+
+  enterpriseLicense:
+    secretName: consul
+    secretKey: enterprise-license
+
+
+# Contains values that configure the Consul UI.
+ui:
+  enabled: true
+  # Registers a Kubernetes Service for the Consul UI as a NodePort.
+  service:
+    type: NodePort
+
+# Configures and installs the automatic Consul service mesh sidecar injector.
+connectInject:
+  enabled: true

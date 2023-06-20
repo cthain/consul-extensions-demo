@@ -1,0 +1,37 @@
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceIntentions
+metadata:
+  name: api
+spec:
+  destination:
+    name: api
+    namespace: default
+  sources:
+    - name: web
+      namespace: default
+      permissions:
+        - action: allow
+          http:
+            pathPrefix: '/'
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceIntentions
+metadata:
+  name: file-server
+spec:
+  destination:
+    name: file-server
+    namespace: default
+  sources:
+    - name: api
+      namespace: default
+      permissions:
+        - action: allow
+          http:
+            pathPrefix: '/'
+    - name: web
+      namespace: default
+      permissions:
+        - action: allow
+          http:
+            pathPrefix: '/'

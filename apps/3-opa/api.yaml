@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: Service
+metadata:
+  # This name will be the service name in Consul.
+  name: api
+spec:
+  selector:
+    app: api
+  ports:
+    - protocol: TCP
+      port: 9090
+      targetPort: 9090
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: api
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      name: api
+      labels:
+        app: api
+      annotations:
+        'consul.hashicorp.com/connect-inject': 'true'
+    spec:
+      serviceAccountName: api
+      containers:
+        - name: api
+          image: nicholasjackson/fake-service:v0.21.0
+          ports:
+            - containerPort: 9090
+              name: http
+        - name: opa
+          image: openpolicyagent/opa:0.53.0-envoy-3
+          args:
+            - "run"
+            - "--server"
+            - "--config-file=/etc/opa/config.yaml"
+            - "--addr=localhost:8181"
+            - "--diagnostic-addr=0.0.0.0:8282"
+            - "--ignore=.*"
+            - "/consul-extensions/policy.rego"
+          volumeMounts:
+            - name: consul-extensions
+              mountPath: /consul-extensions
+              readOnly: true
+            - name: opa-config
+              mountPath: /etc/opa
+              readOnly: true
+      volumes:
+        - name: consul-extensions
+          persistentVolumeClaim:
+            claimName: consul-extensions
+            readOnly: true
+        - name: opa-config
+          configMap:
+            name: opa-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opa-config
+data:
+  config.yaml: |
+    plugins:
+      envoy_ext_authz_grpc:
+        addr: :9191
+        path: envoy/authz/allow
+    decision_logs:
+      console: true

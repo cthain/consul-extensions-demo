@@ -1,0 +1,35 @@
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceDefaults
+metadata:
+  name: api
+  namespace: default
+spec:
+  protocol: http
+  envoyExtensions:
+  - name: builtin/wasm
+    required: true
+    arguments:
+      Protocol: http
+      ListenerType: inbound
+      PluginConfig:
+        VmConfig:
+          Code:
+            Remote:
+              HttpURI:
+                Service:
+                  Name: file-server
+                URI: https://file-server/coraza-proxy-wasm.wasm
+              SHA256: cd4fe769d324e3499ba537c5a53c77591423737745b39c6e894a0a2693f7e21c
+        Configuration: |
+          {
+            "directives_map": {
+              "default": [
+                "Include @demo-conf",
+                "Include @crs-setup-demo-conf",
+                "Include @owasp_crs/*.conf",
+                "SecDebugLogLevel 9",
+                "SecRuleEngine On"
+              ]
+            },
+            "default_directives": "default"
+          }
