@@ -38,7 +38,8 @@ global:
       secretKey: root-token
     
 
-  image: 'hashicorp/consul-enterprise:1.16.0-rc1-ent'
+  #image: 'hashicorp/consul-enterprise:1.16.0-rc1-ent'
+  image: 'localhost:5000/consul-dev-ent'
 
   enterpriseLicense:
     secretName: consul
@@ -55,3 +56,5 @@ ui:
 # Configures and installs the automatic Consul service mesh sidecar injector.
 connectInject:
   enabled: true
+  consulNamespaces:
+    mirroringK8S: true

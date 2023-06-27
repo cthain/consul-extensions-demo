@@ -21,3 +21,19 @@ metadata:
   namespace: default
 spec:
   protocol: http
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceDefaults
+metadata:
+  name: pci-backend-db
+  namespace: pci-backend
+spec:
+  protocol: http
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceDefaults
+metadata:
+  name: pci-frontend-web
+  namespace: pci-frontend
+spec:
+  protocol: http

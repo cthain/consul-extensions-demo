@@ -12,8 +12,7 @@ spec:
       Config:
         GrpcService:
           Target:
-            # URI: localhost:9191
-            URI: 127.0.0.1:9191
+            URI: localhost:9191
   - name: builtin/wasm
     required: true
     arguments:

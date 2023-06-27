@@ -7,5 +7,5 @@ test_get_allowed {
 }
 
 test_post_allowed {
-  allow with input as {"attributes": {"request": {"http": {"method": "POST"}}}}
+  not allow with input as {"attributes": {"request": {"http": {"method": "POST", "path": "/admin/users"}}}}
 }

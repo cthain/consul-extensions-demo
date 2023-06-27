@@ -2,10 +2,10 @@ apiVersion: v1
 kind: Service
 metadata:
   # This name will be the service name in Consul.
-  name: api
+  name: pci-backend-db
 spec:
   selector:
-    app: api
+    app: pci-backend-db
   ports:
     - protocol: TCP
       port: 9090
@@ -14,28 +14,28 @@ spec:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: api
+  name: pci-backend-db
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: api
+  name: pci-backend-db
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: api
+      app: pci-backend-db
   template:
     metadata:
-      name: api
+      name: pci-backend-db
       labels:
-        app: api
+        app: pci-backend-db
       annotations:
         'consul.hashicorp.com/connect-inject': 'true'
     spec:
-      serviceAccountName: api
+      serviceAccountName: pci-backend-db
       containers:
-        - name: api
+        - name: pci-backend-db
           image: nicholasjackson/fake-service:v0.21.0
           ports:
             - containerPort: 9090
@@ -49,19 +49,58 @@ spec:
             - "--addr=localhost:8181"
             - "--diagnostic-addr=0.0.0.0:8282"
             - "--ignore=.*"
-            - "/consul-extensions/policy.rego"
+            - "/consul-extensions/pci.rego"
           volumeMounts:
-            - name: consul-extensions
+            - name: opa-policy
               mountPath: /consul-extensions
               readOnly: true
             - name: opa-config
               mountPath: /etc/opa
               readOnly: true
       volumes:
-        - name: consul-extensions
-          persistentVolumeClaim:
-            claimName: consul-extensions
-            readOnly: true
+        - name: opa-policy
+          configMap:
+            name: opa-policy
         - name: opa-config
           configMap:
             name: opa-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opa-config
+data:
+  config.yaml: |
+    plugins:
+      envoy_ext_authz_grpc:
+        addr: :9191
+        path: envoy/authz/allow
+    decision_logs:
+      console: true
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opa-policy
+data:
+  pci.rego: |
+    package envoy.authz
+
+    import future.keywords
+    
+    import input.attributes.request.http as http_request
+    import input.attributes.metadata_context.filter_metadata.consul as consul
+
+    default allow := false
+
+    allow {
+      permit
+    }
+
+    permit {
+      consul.namespace == "pci-frontend"
+    }
+
+    permit {
+      consul.namespace == "pci-backend"
+    }

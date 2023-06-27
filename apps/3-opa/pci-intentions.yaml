@@ -1,0 +1,23 @@
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceIntentions
+metadata:
+  name: pci-backend-db
+  namespace: pci-backend
+spec:
+  destination:
+    name: pci-backend-db
+    namespace: pci-backend
+  sources:
+    - name: pci-frontend-web
+      namespace: pci-frontend
+      permissions:
+        - action: allow
+          http:
+            pathPrefix: '/'
+    - name: web
+      namespace: default
+      permissions:
+        - action: allow
+          http:
+            pathPrefix: '/'

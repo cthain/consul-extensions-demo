@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: Service
+metadata:
+  # This name will be the service name in Consul.
+  name: pci-frontend-web
+spec:
+  selector:
+    app: pci-frontend-web
+  ports:
+    - protocol: TCP
+      port: 9090
+      targetPort: 9090
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pci-frontend-web
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pci-frontend-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pci-frontend-web
+  template:
+    metadata:
+      name: pci-frontend-web
+      labels:
+        app: pci-frontend-web
+      annotations:
+        'consul.hashicorp.com/connect-inject': 'true'
+    spec:
+      containers:
+        - name: pci-frontend-web
+          image: nicholasjackson/fake-service:v0.21.0
+          ports:
+            - containerPort: 9090
+              name: http
+          env:
+            - name: UPSTREAM_URIS
+              value: http://pci-backend-db.pci-backend.svc.cluster.local
+      # If ACLs are enabled, the serviceAccountName must match the Consul service name.
+      serviceAccountName: pci-frontend-web

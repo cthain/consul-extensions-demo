@@ -26,6 +26,8 @@ The local registry is not required when using published container images.
 
 ```shell
 ./kind-with-rgy
+kubectl create namespace pci-backend
+kubectl create namespace pci-frontend
 ```
 </details>
 
@@ -37,10 +39,11 @@ This step is only necessary while work is in progress and there is a need to be 
 This is unnecessary when using published container images.
 
 ```shell
-cd consul-enterprise/
+cd $HOME/github.com/hashicorp/consul-enterprise/
 make dev-docker
 docker tag consul-dev localhost:5000/consul-dev-ent
 docker push localhost:5000/consul-dev-ent
+cd -
 ```
 
 or
@@ -92,44 +95,15 @@ consul-k8s install -config-file values.yaml -namespace default -auto-approve
 ```
 </details>
 
-### 
-
-<details>
-<summary>Install the apps</summary>
-
-```shell
-kubectl apply -f apps/1-install/fs.yaml
-kubectl apply -f apps/1-install/api.yaml
-kubectl apply -f apps/1-install/web.yaml
-kubectl apply -f apps/1-install/intentions.yaml
-kubectl apply -f apps/1-install/service-defaults.yaml
-```
-</details>
-
 <details>
 <summary>Configure the Environment</summary>
 
-Using the `env.sh` script.
+Use the `env.sh` script.
 
 ```shell
 . env.sh
 ```
 
-The `env.sh` script does the following:
-
-```shell
-# consul cli
-export CONSUL_HTTP_TOKEN='1111111-2222-3333-4444-555555555555'
-export CONSUL_HTTP_ADDR=localhost:8501
-export CONSUL_HTTP_SSL=true
-export CONSUL_HTTP_SSL_VERIFY=false
-```
-
-```shell
-# apps
-export API_APP=$(kubectl get pods | grep 'api-' | awk '{print $1}')
-export WEB_APP=$(kubectl get pods | grep 'web-' | awk '{print $1}')
-```
 </details>
 
 
@@ -147,6 +121,30 @@ kubectl port-forward services/web 9090
 kubectl port-forward pods/$API_APP 19000
 ```
 
+</details>
+
+<details>
+<summary>Create PCI Namespaces</summary>
+
+```shell
+consul namespace create -name pci-backend
+consul namespace create -name pci-frontend
+```
+</details>
+
+<details>
+<summary>Install the apps</summary>
+
+```shell
+kubectl apply -f apps/1-install/opa-config-map.yaml
+kubectl apply -f apps/1-install/fs.yaml
+kubectl apply -f apps/1-install/api.yaml
+kubectl apply -f apps/1-install/web.yaml
+kubectl apply -f apps/1-install/pci-backend-db.yaml -n pci-backend
+kubectl apply -f apps/1-install/pci-frontend-web.yaml -n pci-frontend
+kubectl apply -f apps/1-install/intentions.yaml
+kubectl apply -f apps/1-install/service-defaults.yaml
+```
 </details>
 
 <details>
@@ -171,15 +169,15 @@ Browse to the [Web app UI](http://localhost:9090/ui)
 kubectl exec -it pod/$WEB_APP -c web -- ash
 
 # good actor
-curl 'http://api.default.svc.cluster.local/'
+curl -w "\nHTTP status: %{http_code}\n\n" 'http://api.default.svc.cluster.local/'
 
 # bad actor requests - these will succeed
 
 # attempted SQL injection
-curl -v 'http://api.default.svc.cluster.local/' -d'1%27%20ORDER%20BY%203--%2B'
+curl -w "\nHTTP status: %{http_code}\n\n" 'http://api.default.svc.cluster.local/' -d'1%27%20ORDER%20BY%203--%2B'
 
 # attempted JS injection
-curl -v 'http://api.default.svc.cluster.local/?arg=<script>alert(0)</script>'
+curl -w "\nHTTP status: %{http_code}\n\n" 'http://api.default.svc.cluster.local/?arg=<script>alert(0)</script>'
 ```
 </details>
 
@@ -205,7 +203,7 @@ Copy the SHA256 checksum, we'll need it for the next step.
 <summary>Add the Wasm Envoy extension to the `api` app</summary>
 
 ```shell
-code apps/2-wasm/service-defaults.yaml
+vi apps/2-wasm/service-defaults.yaml
 kubectl apply -f apps/2-wasm/service-defaults.yaml
 ```
 
@@ -224,10 +222,10 @@ curl 'http://api.default.svc.cluster.local/'
 # bad actor requests - will be rejected by WAF with 403 Forbidden
 
 # attempted SQL injection
-curl -v 'http://api.default.svc.cluster.local/' -d'1%27%20ORDER%20BY%203--%2B'
+curl -w "\nHTTP status: %{http_code}\n\n" 'http://api.default.svc.cluster.local/' -d'1%27%20ORDER%20BY%203--%2B'
 
 # attempted JS injection
-curl -v 'http://api.default.svc.cluster.local/?arg=<script>alert(0)</script>'
+curl -w "\nHTTP status: %{http_code}\n\n" 'http://api.default.svc.cluster.local/?arg=<script>alert(0)</script>'
 ```
 
 </details>
@@ -239,6 +237,7 @@ curl -v 'http://api.default.svc.cluster.local/?arg=<script>alert(0)</script>'
 <summary>Deploy OPA agent sidecar to the `api` app</summary>
 
 ```shell
+vimdiff apps/1-install/api.yaml apps/3-opa/api.yaml
 kubectl apply -f apps/3-opa/api.yaml
 . env.sh
 kubectl describe pods/${API_APP}
@@ -250,6 +249,7 @@ kubectl describe pods/${API_APP}
 <summary>Apply the `ext_authz` extension to enable OPA</summary>
 
 ```shell
+vi apps/3-opa/service-defaults.yaml
 kubectl apply -f apps/3-opa/service-defaults.yaml
 ```
 
@@ -262,12 +262,49 @@ Ensure that we're only permitted to read (method = `GET`) resources from the `ap
 Writes (method = `POST`) are not permitted.
 
 ```shell
-code extensions/policy.rego
+vi extensions/policy.rego
 
-# read OK
-curl -v 'http://api.default.svc.cluster.local/'
-# write NOK
-curl -v -XPOST 'http://api.default.svc.cluster.local/'
+# reads OK
+curl 'http://api.default.svc.cluster.local/'
+curl 'http://api.default.svc.cluster.local/admin'
+
+# write NOK to /admin
+curl -w "\nHTTP status: %{http_code}\n\n" -XPOST 'http://api.default.svc.cluster.local/admin'
+```
+
+</details>
+
+## PCI Compliance
+
+<details>
+<summary>web can access pci-backend-db with an intention</summary>
+
+```shell
+vi apps/3-opa/pci-intentions.yaml
+kubectl apply -f apps/3-opa/pci-intentions.yaml
+```
+
+```shell
+curl 'http://pci-backend-db.pci-backend.svc.cluster.local/'
+```
+
+</details>
+
+<details>
+<summary>Use OPA policy to enforce PCI</summary>
+
+Only applications in the `pci-frontend` and `pci-backend` namespaces can talk to `pci-backend` services.
+
+```shell
+vi extensions/pci.rego
+vi apps/3-opa/pci-service-defaults.yaml
+kubectl apply -f apps/3-opa/pci-service-defaults.yaml
+```
+
+Now `web` can't talk to `pci-backend-db` because it is in the `default` partition.
+
+```shell
+curl -w "\nHTTP status: %{http_code}\n\n" 'http://pci-backend-db.pci-backend.svc.cluster.local/'
 ```
 
 </details>
@@ -338,7 +375,7 @@ kubectl apply -f apps/1-install/service-defaults.yaml
 <summary>Configuration Errors</summary>
 
 ```shell
-code apps/4-troubleshooting/config-err-service-defaults.hcl
+vi apps/4-troubleshooting/config-err-service-defaults.hcl
 
 # Consul CLI
 consul config write apps/4-troubleshooting/config-err-service-defaults.hcl
@@ -355,7 +392,7 @@ kubectl describe service-defaults/api
 
 
 ```shell
-code apps/4-troubleshooting/runtime-err-service-defaults.yaml
+vi apps/4-troubleshooting/runtime-err-service-defaults.yaml
 
 kubectl apply -f apps/4-troubleshooting/runtime-err-service-defaults.yaml
 kubectl describe service-defaults/api # resource sync'd w/o errors
@@ -365,8 +402,8 @@ kubectl describe service-defaults/api # resource sync'd w/o errors
 ## If the extensions are working correctly, we expect 403 responses
 ## Spoiler, we're going to get 200 responses
 ## May need to try a couple of times to clear the response cache
-curl -v 'http://api.default.svc.cluster.local/' -d'1%27%20ORDER%20BY%203--%2B'
-curl -v -XPOST 'http://api.default.svc.cluster.local/'
+curl -w "\n%{http_code}\n" 'http://api.default.svc.cluster.local/' -d'1%27%20ORDER%20BY%203--%2B'
+curl -XPOST 'http://api.default.svc.cluster.local/'
 
 # dump the envoy config for the HTTP filters on the `public_listener`
 curl -sS localhost:19000/config_dump | jq --raw-output '.configs[2].dynamic_listeners[] | .active_state.listener.filter_chains[].filters[] | select(.name == "envoy.filters.network.http_connection_manager") | select(.typed_config.route_config.name == "public_listener") | .typed_config.http_filters'
